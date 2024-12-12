@@ -108,7 +108,11 @@ The `source/` directory houses the logic and classes that define how data is sou
 
 ---
 
-**In summary**, this repository demonstrates a robust, extensible architecture for building PET-specific streaming pipelines under the ERSAP framework. It cleanly separates ERSAP engine definitions from user-specific data processing logic. By adhering to the interfaces and structures described above, developers can efficiently scale their processing capabilities, integrate fault-tolerance, and maintain high-throughput data ingestion and computation pipelines.
+**In summary**, this repository demonstrates extensible architecture for building PET-specific streaming pipelines under the ERSAP framework. 
+It separates ERSAP engine definitions from user-specific data processing 
+logic. By adhering to the interfaces and structures described above, 
+developers can efficiently scale their processing capabilities, integrate fault-tolerance, and maintain high-throughput data ingestion 
+and computation pipelines.
 
 
 ## Building
