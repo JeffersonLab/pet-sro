@@ -1,0 +1,11 @@
+---
+name: PetGeometryProcessorEngine
+engine: org.jlab.ersap.actor.pet.engine.PetGeometryProcessorEngine
+type: java
+
+author: Vardan Gyurjyan
+email: gurjyan@jlab.org
+
+version: 0.1
+description:
+  PET geometry processor.

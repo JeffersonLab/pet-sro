@@ -1,0 +1,11 @@
+---
+name: PetStreamSourceEngine
+engine: org.jlab.ersap.actor.pet.engine.PetStreamSourceEngine
+type: java
+
+author: Vardan Gyurjyan
+email: gurjyan@jlab.org
+
+version: 0.1
+description:
+   PET single stream source actor that receives data from the VTP socket.
