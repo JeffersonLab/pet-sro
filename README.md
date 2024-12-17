@@ -130,7 +130,7 @@ and computation pipelines.
 3. Clone and build pet-sro project from the Git repository
 
 
-    $ clone https://github.com/JeffersonLab/ersap-actor.git
+    $ clone https://github.com/JeffersonLab/pet-sro.git
     
     $ ./gradlew deploy
 
