@@ -1,0 +1,25 @@
+---
+io-services:
+  reader:
+    class: org.jlab.ersap.actor.pet.engine.PetStreamSourceEngine
+    name: Source
+  writer:
+    class: org.jlab.ersap.actor.pet.engine.PetStreamSinkEngine
+    name: Sink
+services:
+  - class: org.jlab.ersap.actor.pet.engine.PetGeometryProcessorEngine
+    name: GProcessor
+configuration:
+  io-services:
+    reader:
+      streamHost: "hostname/IP"
+      streamPort: 7777
+      ringBufferSize: 1024
+      connectionTimeout: 5000
+      readTimeout: 2000
+    writer:
+  services:
+    GProcessor:
+mime-types:
+  - binary/data-evio
+  - binary/data-jobj
