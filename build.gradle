@@ -82,12 +82,12 @@ publishing {
     }
 }
 def deploySpec = copySpec {
-    into('plugins/epsci/lib') {
+    into('plugins/pet-sro/lib') {
         from configurations.runtimeClasspath
         from jar.archiveFile
     }
 
-    from('plugins/epsci/bin') {
+    from('plugins/pet-sro/bin') {
         into 'bin'
         exclude 'etc'
         fileMode 0755
