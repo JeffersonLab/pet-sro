@@ -16,26 +16,23 @@ import org.jlab.ersap.actor.util.IESource;
 
 import java.net.Socket;
 import java.nio.ByteOrder;
+import java.util.concurrent.Callable;
 
-public class PetStreamReceiver implements IESource {
+public class PetStreamReceiver implements IESource, Callable<String> {
 
     private SocketConnectionHandler handler;
     private Socket connection;
 
-    public PetStreamReceiver (String streamHost,
-                             int streamPort,
-                             int ringBufferSize,
-                             int connectionTimeout,
-                             int readTimeout) {
-        Disruptor<Event> disruptor = new Disruptor<>(Event::new, ringBufferSize, Runnable::run);
+    public PetStreamReceiver (StreamParameters p) {
+        Disruptor<Event> disruptor = new Disruptor<>(Event::new, p.getRingBufferSize(), Runnable::run);
         disruptor.start();
 
         handler = new SocketConnectionHandler(
                 disruptor.getRingBuffer(),
-                streamHost, streamPort,
+                p.getHost(), p.getPort(),
                 ByteOrder.BIG_ENDIAN,
-                connectionTimeout,
-                readTimeout
+                p.getConnectionTimeout(),
+                p.getReadTimeout()
         );
 
         try {
@@ -62,6 +59,11 @@ public class PetStreamReceiver implements IESource {
     @Override
     public void close() {
        handler.closeConnection(connection);
+    }
+
+    @Override
+    public String call() throws Exception {
+        return null;
     }
 }
 

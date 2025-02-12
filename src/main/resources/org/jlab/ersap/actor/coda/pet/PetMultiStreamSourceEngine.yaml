@@ -1,0 +1,11 @@
+---
+name: PetMultiStreamSourceEngine
+engine: org.jlab.ersap.actor.pet.engine.PetMultiStreamSourceEngine
+type: java
+
+author: Vardan Gyurjyan
+email: gurjyan@jlab.org
+
+version: 0.1
+description:
+  PET multi stream source actor that receives data from multiple VTP sockets.
