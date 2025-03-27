@@ -40,13 +40,17 @@ public class PetMultiStreamSourceEngine extends AbstractEventReaderService<PetMu
             // Get parameters from the ERSAP YAML configuration file
             if (jsonObject.has("streamHost")) {
                 p.setHost(jsonObject.getString("streamHost"));
-            } else if (jsonObject.has("streamPort")) {
+            }
+            if (jsonObject.has("streamPort")) {
                 p.setPort(jsonObject.getInt("streamPort"));
-            } else if (jsonObject.has("ringBufferSize")) {
+            }
+            if (jsonObject.has("ringBufferSize")) {
                 p.setRingBufferSize(jsonObject.getInt("ringBufferSize"));
-            } else if (jsonObject.has("connectionTimeout")) {
+            }
+            if (jsonObject.has("connectionTimeout")) {
                 p.setConnectionTimeout(jsonObject.getInt("connectionTimeout"));
-            } else if (jsonObject.has("readTimeout")) {
+            }
+            if (jsonObject.has("readTimeout")) {
                 p.setReadTimeout(jsonObject.getInt("readTimeout"));
             }
             ps[i] = p;

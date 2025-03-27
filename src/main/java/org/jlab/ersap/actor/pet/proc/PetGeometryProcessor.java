@@ -30,7 +30,7 @@ public class PetGeometryProcessor implements IEProcessor {
     @Override
     public Object process(Object o) {
         /* The main processing action goes here */
-    return null;
+    return o;
     }
 
     /**

@@ -50,7 +50,6 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation group: 'org.apache.commons', name: 'commons-pool2', version: '2.9.0'
     implementation group: 'com.google.protobuf', name: 'protobuf-java', version: '3.16.3'
-    implementation 'org.jetbrains:annotations:19.0.0'
     deployerJars 'org.apache.maven.wagon:wagon-ssh-external:2.12'
     testImplementation 'junit:junit:4.13.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.4.2'
@@ -58,6 +57,7 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:2.7.11'
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+    implementation 'org.jetbrains:annotations:24.0.1'
 }
 
 test {

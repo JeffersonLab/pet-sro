@@ -1,0 +1,11 @@
+---
+name: PetStreamSinkEngine
+engine: org.jlab.ersap.actor.pet.engine.PetStreamSinkEngine
+type: java
+
+author: Vardan Gyurjyan
+email: gurjyan@jlab.org
+
+version: 0.1
+description:
+  PET single stream sink actor.

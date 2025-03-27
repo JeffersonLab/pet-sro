@@ -1,7 +1,8 @@
 ---
 io-services:
   reader:
-    class: org.jlab.ersap.actor.pet.engine.PetStreamSourceEngine
+    #    class: org.jlab.ersap.actor.pet.engine.SimPetStreamSourceEngine
+    class: org.jlab.ersap.actor.pet.engine.SimPetMultiStreamSourceEngine
     name: Source
   writer:
     class: org.jlab.ersap.actor.pet.engine.PetStreamSinkEngine
@@ -12,11 +13,13 @@ services:
 configuration:
   io-services:
     reader:
-      streamHost: "hostname/IP"
-      streamPort: 7777
       ringBufferSize: 1024
-      connectionTimeout: 5000
-      readTimeout: 2000
+      dataSize: 100
+      streamCount: 2
+    #      streamHost: "hostname/IP"
+    #      streamPort: 7777
+    #      connectionTimeout: 5000
+    #      readTimeout: 2000
     writer:
   services:
     GProcessor:

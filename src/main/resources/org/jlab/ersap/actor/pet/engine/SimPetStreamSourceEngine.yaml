@@ -1,0 +1,11 @@
+---
+name: SimPetStreamSourceEngine
+engine: org.jlab.ersap.actor.pet.engine.SimPetStreamSourceEngine
+type: java
+
+author: Vardan Gyurjyan
+email: gurjyan@jlab.org
+
+version: 0.1
+description:
+  PET single stream source actor that generates fake data.
