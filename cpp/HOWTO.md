@@ -8,6 +8,10 @@ Everything below runs on one host. Two terminals.
 ---
 
 ## 1. Build
+# for MacOS. This will automatically export PKG_CONFIG_PATH
+- conda deactivate
+- conda activate e2sar
+
 
 Both programs need E2SAR. Put its `e2sar.pc` on the pkg-config path first:
 

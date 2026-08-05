@@ -102,6 +102,11 @@ if(PETSRO_ENABLE_EJFAT)
   target_compile_definitions(evio_ejfat_replay_core PUBLIC PETSRO_HAVE_E2SAR)
   # PUBLIC: e2sar pulls in Boost.Log and gRPC symbols that the final link needs.
   target_link_libraries(evio_ejfat_replay_core PUBLIC PkgConfig::E2SAR)
+  # libe2sar.a is static, so pkg-config's plain Libs (-le2sar) omits the Boost
+  # libraries (log, thread, url, chrono, ...) it links against internally --
+  # those only show up in Libs.private. Pull those in too, or anything that
+  # calls into e2sar fails to link with dozens of undefined boost symbols.
+  target_link_libraries(evio_ejfat_replay_core PUBLIC ${E2SAR_STATIC_LDFLAGS})
 endif()
 
 # ---------------------------------------------------------------------------
