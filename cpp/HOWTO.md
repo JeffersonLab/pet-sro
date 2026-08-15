@@ -8,9 +8,34 @@ Everything below runs on one host. Two terminals.
 ---
 
 ## 1. Build
-# for MacOS. This will automatically export PKG_CONFIG_PATH
+
+##########  For MacOS. This will automatically export PKG_CONFIG_PATH
+- conda create -n e2sar \
+  --override-channels \
+  -c ibaldin \
+  -c conda-forge \
+  --strict-channel-priority \
+  python=3.11 \
+  e2sar
+
+- conda env config vars set \
+  PKG_CONFIG_PATH="$CONDA_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+
 - conda deactivate
 - conda activate e2sar
+
+- conda install \
+  --override-channels \
+  -c ibaldin \
+  -c conda-forge \
+  --strict-channel-priority \
+  "libboost-devel=1.89"
+
+- pkg-config --modversion e2sar
+- conda list | grep -E 'boost|e2sar'
+
+#####################
 
 
 Both programs need E2SAR. Put its `e2sar.pc` on the pkg-config path first:
