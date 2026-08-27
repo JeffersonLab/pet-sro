@@ -15,8 +15,20 @@ if(NOT DEFINED ERSAP_HOME AND DEFINED ENV{ERSAP_HOME})
   set(ERSAP_HOME "$ENV{ERSAP_HOME}" CACHE PATH "ERSAP installation prefix")
 endif()
 
-find_path(ERSAP_INCLUDE_DIR ersap/engine.hpp HINTS ${ERSAP_HOME}/include)
-find_library(ERSAP_LIBRARY ersap HINTS ${ERSAP_HOME}/lib)
+if(NOT ERSAP_HOME)
+  message(STATUS
+      "ersap-cpp not found (ERSAP_HOME not set);\n"
+      "   EjfatReceiverActor will not be built. Install ersap-cpp and set ERSAP_HOME,\n"
+      "   or pass -DERSAP_HOME=/path/to/ersap.")
+  return()
+endif()
+
+find_path(ERSAP_INCLUDE_DIR ersap/engine.hpp
+    HINTS ${ERSAP_HOME}/include
+    NO_DEFAULT_PATH)
+find_library(ERSAP_LIBRARY ersap
+    HINTS ${ERSAP_HOME}/lib
+    NO_DEFAULT_PATH)
 
 if(NOT ERSAP_INCLUDE_DIR OR NOT ERSAP_LIBRARY)
   message(STATUS
@@ -46,4 +58,5 @@ set_target_properties(EjfatReceiverActor PROPERTIES
     SOVERSION 1
     POSITION_INDEPENDENT_CODE ON)
 
-install(TARGETS EjfatReceiverActor LIBRARY DESTINATION lib)
+install(TARGETS EjfatReceiverActor
+    LIBRARY DESTINATION ${ERSAP_HOME}/lib)
