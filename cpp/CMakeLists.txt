@@ -121,7 +121,6 @@ target_link_libraries(evio_ejfat_replay
             Boost::program_options
             petsro_warnings)
 
-install(TARGETS evio_ejfat_replay RUNTIME DESTINATION bin)
 
 # ---------------------------------------------------------------------------
 # Receiver
@@ -137,7 +136,6 @@ if(PETSRO_ENABLE_EJFAT)
               Boost::program_options
               petsro_warnings)
 
-  install(TARGETS evio_ejfat_recv RUNTIME DESTINATION bin)
 else()
   message(STATUS "evio_ejfat_recv needs E2SAR and will not be built")
 endif()
