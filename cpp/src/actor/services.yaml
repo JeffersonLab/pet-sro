@@ -28,6 +28,7 @@ configuration:
     writer:
       # Default, stated explicitly: this chain carries EVIO blocks end to end.
       dataType: "binary/data-evio"
+      output-file: "/dev/null"
   services:
     EjfatRecv:
       uri: "ejfat://useless@127.0.0.1:9876/lb/1?sync=127.0.0.1:12345&data=127.0.0.1"
