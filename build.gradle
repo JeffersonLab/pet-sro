@@ -83,7 +83,6 @@ publishing {
 }
 def deploySpec = copySpec {
     into('plugins/pet-sro/lib') {
-        from configurations.runtimeClasspath
         from jar.archiveFile
     }
 
