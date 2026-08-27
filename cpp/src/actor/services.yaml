@@ -1,0 +1,54 @@
+---
+# Example ERSAP deployment for EjfatReceiverActor.
+#
+# ERSAP's reader slot (io-services.reader) is a Java-only interface
+# (AbstractEventReaderService), so a native source actor runs as the first
+# entry in `services` and is driven by a trivial Java trigger source, exactly
+# as HaidisActor is in haidis-dp. Every execute() call returns one reassembled
+# EJFAT event.
+#
+# The shared library is loaded by name from $ERSAP_HOME/lib, so
+# `class: EjfatReceiverActor` refers to libEjfatReceiverActor.so/.dylib.
+io-services:
+  reader:
+    class: org.jlab.ersap.actor.coda.engine.UniAdapterSourceEngine
+    name: Trigger
+  writer:
+    class: org.jlab.ersap.actor.pet.engine.PetStreamSinkEngine
+    name: Sink
+services:
+  - class: EjfatReceiverActor
+    name: EjfatRecv
+    lang: cpp
+  - class: org.jlab.ersap.actor.pet.engine.PetSinglesProcessorEngine
+    name: Singles
+configuration:
+  io-services:
+    reader:
+    writer:
+      # Default, stated explicitly: this chain carries EVIO blocks end to end.
+      dataType: "binary/data-evio"
+  services:
+    EjfatRecv:
+      uri: "ejfat://useless@127.0.0.1:9876/lb/1?sync=127.0.0.1:12345&data=127.0.0.1"
+      recv-ip: "127.0.0.1"
+      recv-port: 10000
+      recv-threads: 1
+      event-timeout: 500
+      poll-timeout: 1000
+      withcp: false
+      novalidate: false
+      max-events: 0
+      stats-interval: 5
+      verbose: false
+      quiet: false
+      # Actor-specific, see README.md
+      validation: structural
+      output-mime: binary/data-evio
+      queue-size: 256
+    Singles:
+      frequency: 1
+mime-types:
+  - binary/data-evio
+  - binary/data-jobj
+  - binary/bytes

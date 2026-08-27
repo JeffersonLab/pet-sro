@@ -46,6 +46,12 @@ constexpr std::size_t wordOffset(std::size_t wordIndex) noexcept {
 /// Word 0: block length in words, including word 0 itself.
 constexpr std::size_t WORD_BLOCK_LENGTH = 0;
 
+/// Word 2: EVIO block header length in words. Always 8 for EVIO version 4.
+constexpr std::size_t WORD_HEADER_LENGTH = 2;
+
+/// Word 5: bit info in the upper 24 bits, EVIO version in the low 8.
+constexpr std::size_t WORD_VERSION = 5;
+
 /// Word 7 holds EVIO_MAGIC; the cheapest way to recognise a block or a byte order.
 constexpr std::size_t WORD_MAGIC = 7;
 
@@ -70,8 +76,17 @@ constexpr std::uint32_t MIN_TIMESTAMPED_BLOCK_WORDS = WORD_TIMESTAMP_HI + 1;
 /// EVIO magic, big-endian, at WORD_MAGIC.
 constexpr std::uint32_t EVIO_MAGIC = 0xC0DA0100U;
 
-/// Smallest plausible block: the EVIO block header alone.
+/// Smallest plausible block: the EVIO block header alone. Also the value word 2
+/// carries in every EVIO version 4 block.
 constexpr std::uint32_t MIN_BLOCK_WORDS = 8;
+
+/// The only EVIO version the FEB emits and this program understands.
+constexpr std::uint32_t EVIO_VERSION = 4;
+
+/// Extracts the version from word 5's low byte.
+constexpr std::uint32_t versionFromWord(std::uint32_t versionWord) noexcept {
+    return versionWord & 0xFFU;
+}
 
 /// Sanity ceiling on a block length, to reject garbage before allocating on it.
 constexpr std::uint32_t MAX_BLOCK_WORDS = 100000;

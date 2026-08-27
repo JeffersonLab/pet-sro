@@ -21,6 +21,10 @@ configuration:
     #      connectionTimeout: 5000
     #      readTimeout: 2000
     writer:
+      # The simulator chain carries opaque byte arrays, not EVIO blocks, so the
+      # sink must accept binary/data-jobj here. The default is binary/data-evio,
+      # which is what the C++ EjfatReceiverActor chain uses.
+      dataType: "binary/data-jobj"
   services:
     GProcessor:
 mime-types:

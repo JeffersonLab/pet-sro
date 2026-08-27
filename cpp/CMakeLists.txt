@@ -85,6 +85,8 @@ add_library(evio_ejfat_replay_core STATIC
     src/EvioEventView.cpp
     src/EventSynchronizer.cpp
     src/EjfatSender.cpp
+    src/EjfatReceiver.cpp
+    src/ReceiveStats.cpp
     src/ReplayLoop.cpp
     src/ReplayStats.cpp
     src/TimestampRebaser.cpp
@@ -141,6 +143,24 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# ERSAP actor
+#
+# Shares the receiver in evio_ejfat_replay_core with evio_ejfat_recv, so the
+# two cannot develop different defaults or behaviour. Needs E2SAR for the same
+# reason the receiver executable does, plus an ersap-cpp installation.
+# ---------------------------------------------------------------------------
+option(PETSRO_BUILD_ERSAP_ACTOR "Build the EJFAT receiver ERSAP actor" ON)
+
+if(PETSRO_BUILD_ERSAP_ACTOR AND PETSRO_ENABLE_EJFAT)
+  # POSITION_INDEPENDENT_CODE on the static core, because the actor is a shared
+  # library that links it.
+  set_property(TARGET evio_ejfat_replay_core PROPERTY POSITION_INDEPENDENT_CODE ON)
+  add_subdirectory(src/actor)
+elseif(PETSRO_BUILD_ERSAP_ACTOR)
+  message(STATUS "EjfatReceiverActor needs E2SAR and will not be built")
+endif()
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 if(PETSRO_BUILD_TESTS)
@@ -152,5 +172,6 @@ message(STATUS "")
 message(STATUS "evio_ejfat_replay configuration:")
 message(STATUS "  Build type    : ${CMAKE_BUILD_TYPE}")
 message(STATUS "  EJFAT sending : ${PETSRO_ENABLE_EJFAT}")
+message(STATUS "  ERSAP actor   : ${PETSRO_BUILD_ERSAP_ACTOR}")
 message(STATUS "  Tests         : ${PETSRO_BUILD_TESTS}")
 message(STATUS "")

@@ -1,0 +1,12 @@
+---
+name: PetSinglesProcessorEngine
+engine: org.jlab.ersap.actor.pet.engine.PetSinglesProcessorEngine
+type: java
+
+author: Vardan Gyurjyan
+email: gurjyan@jlab.org
+
+version: 0.1
+description:
+  Prints the EVIO frame number and timestamp of every block received from
+  the C++ EJFAT receiver actor.

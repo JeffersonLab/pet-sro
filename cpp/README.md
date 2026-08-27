@@ -137,6 +137,8 @@ cpp/
 │   ├── EventSynchronizer.hpp  N-way timestamp merge
 │   ├── PacketSink.hpp         transport interface + NullPacketSink
 │   ├── EjfatSender.hpp        PacketSink backed by E2SAR (pimpl)
+│   ├── EjfatReceiver.hpp      reception + reassembly via E2SAR (pimpl)
+│   ├── ReceiveStats.hpp       receiver counters, reports, validation levels
 │   ├── TimestampRebaser.hpp   loop-seam timestamp/frame-counter rebasing
 │   ├── ReplayLoop.hpp         application control logic
 │   ├── ReplayStats.hpp        counters and reports
@@ -144,7 +146,13 @@ cpp/
 │   └── Logging.hpp            level-filtered logger
 ├── HOWTO.md                   end-to-end run, no load balancer
 ├── src/                       one .cpp per header, plus main.cpp
-│                              and recv_main.cpp (evio_ejfat_recv)
+│   │                          and recv_main.cpp (evio_ejfat_recv)
+│   └── actor/                 the ERSAP plugin
+│       ├── CMakeLists.txt
+│       ├── EjfatReceiverActor.hpp
+│       ├── EjfatReceiverActor.cpp
+│       ├── services.yaml      example ERSAP deployment
+│       └── README.md          data-format and compatibility analysis
 └── tests/
     ├── CMakeLists.txt
     ├── TestHarness.hpp        ~100-line test runner
@@ -160,9 +168,32 @@ cpp/
 The four concerns the task calls out are in separate components: the EVIO reader
 (`EvioFileReader`), timestamp synchronization (`EventSynchronizer`), EJFAT
 packetization (`EjfatSender` behind `PacketSink`) and application control
-(`ReplayLoop`). Only two files include `<e2sar.hpp>`: `EjfatSender.cpp` and the
-receiver's `recv_main.cpp`. Everything else, and every test, builds without
-E2SAR.
+(`ReplayLoop`). Only two files include `<e2sar.hpp>`: `EjfatSender.cpp` and
+`EjfatReceiver.cpp`. Everything else, and every test, builds without E2SAR.
+
+Reception is a component in its own right, for the same reason sending is:
+`evio_ejfat_recv` and the ERSAP actor in `src/actor` both drive
+`EjfatReceiver`, so neither can develop its own defaults or its own idea of
+what a received event is. `EjfatReceiverConfig`'s member initialisers are the
+single source of truth for the defaults documented under
+[Command-line reference](#command-line-reference).
+
+### What the reassembler returns
+
+`e2sar::Reassembler::recvEvent()` hands back a `new[]`-allocated buffer that the
+caller owns and must `delete[]`; `petsro::ReassembledEvent` is the move-only
+holder that does exactly that. Every transport header -- UDP, LB and RE -- has
+already been stripped, so the buffer holds precisely the payload the segmenter
+was given for that event. Because `ReplayLoop::sendGroup()` sends one
+`EvioEvent` per EJFAT event, **one reassembled buffer is one complete
+big-endian EVIO version-4 block containing exactly one EVIO event**, with its
+block-length word present and nothing prepended or appended.
+
+`EvioEventView::inspectEvioEvent()` proves that on every event by comparing the
+block-length word against the number of bytes actually delivered -- the one
+check the file reader gets for free and the network does not.
+`cpp/src/actor/README.md` carries the field-by-field verification against the
+captures in `data/`.
 
 ---
 

@@ -15,6 +15,7 @@ import org.jlab.epsci.ersap.base.ErsapUtil;
 import org.jlab.epsci.ersap.engine.Engine;
 import org.jlab.epsci.ersap.engine.EngineData;
 import org.jlab.epsci.ersap.engine.EngineDataType;
+import org.jlab.ersap.actor.datatypes.EvioBlockDataType;
 import org.jlab.ersap.actor.datatypes.JavaObjectType;
 import org.jlab.ersap.actor.pet.proc.PetGeometryProcessor;
 import org.json.JSONObject;
@@ -66,7 +67,11 @@ public class PetGeometryProcessorEngine implements Engine {
             throw new RuntimeException(e);
         }
         Object outData = petGeometryProcessor.process(inData);
-        out.setData(JavaObjectType.JOBJ, outData);
+        // Echo the type the data arrived as. The processor is a pass-through,
+        // so re-labelling an EVIO block as binary/data-jobj would only lose the
+        // byte order the EVIO type carries, and would force the sink to accept
+        // a type the source never sent.
+        out.setData(engineData.getMimeType(), outData);
         return out;
     }
 
@@ -82,7 +87,8 @@ public class PetGeometryProcessorEngine implements Engine {
      */
     @Override
     public Set<EngineDataType> getInputDataTypes() {
-        return ErsapUtil.buildDataTypes(JavaObjectType.JOBJ,
+        return ErsapUtil.buildDataTypes(EvioBlockDataType.EVIO_BLOCK,
+                JavaObjectType.JOBJ,
                 EngineDataType.JSON);
     }
 
@@ -93,7 +99,8 @@ public class PetGeometryProcessorEngine implements Engine {
      */
     @Override
     public Set<EngineDataType> getOutputDataTypes() {
-        return ErsapUtil.buildDataTypes(JavaObjectType.JOBJ);
+        return ErsapUtil.buildDataTypes(EvioBlockDataType.EVIO_BLOCK,
+                JavaObjectType.JOBJ);
     }
 
     @Override
