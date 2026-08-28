@@ -79,6 +79,148 @@ not find E2SAR — an image can never ship a binary that silently cannot send.
 
 ---
 
+## Publishing to Docker Hub
+
+Docker Hub repositories are named `<namespace>/<repository>`, where the
+namespace is your Docker Hub user or organisation. The local
+`pet-sro/evio-ejfat-replay` tag is not a valid Hub name, so the image has to be
+tagged for the namespace you are pushing to. Substitute yours for `<namespace>`
+throughout — for a Jefferson Lab organisation account that would be
+`jeffersonlab`.
+
+### 1. Log in
+
+Use a **personal access token**, not your account password. Create one at
+[hub.docker.com](https://hub.docker.com) → *Account Settings* → *Personal
+access tokens*, with `Read & Write` scope.
+
+```bash
+docker login -u <namespace>
+# Password: paste the access token
+```
+
+Reading the token from a file or a variable keeps it out of shell history:
+
+```bash
+echo "$DOCKERHUB_TOKEN" | docker login -u <namespace> --password-stdin
+```
+
+The credential is stored by your platform's credential helper (`credsStore` in
+`~/.docker/config.json`) and is never part of the image. Log out afterwards on
+a shared machine with `docker logout`.
+
+### 2. Build with the tags you intend to push
+
+Tag by content, not just `latest`. A useful scheme names the app version and
+the E2SAR it links against, since that pairing is what actually determines
+compatibility:
+
+```bash
+VERSION=1.0.0
+E2SAR=0.3.2
+REF=$(git rev-parse --short HEAD)
+
+docker buildx build --platform linux/amd64 \
+    --build-arg VCS_REF="$(git rev-parse HEAD)" \
+    --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -t <namespace>/evio-ejfat-replay:"${VERSION}-e2sar${E2SAR}" \
+    -t <namespace>/evio-ejfat-replay:"${VERSION}" \
+    -t <namespace>/evio-ejfat-replay:"git-${REF}" \
+    -t <namespace>/evio-ejfat-replay:latest \
+    --load .
+```
+
+`VCS_REF` and `BUILD_DATE` fill in `org.opencontainers.image.revision` and
+`org.opencontainers.image.created`. They are declared at the very end of the
+Dockerfile, so changing them rebuilds only metadata layers — not the
+six-minute CMake configure.
+
+### 3. Smoke-test the exact image you are about to publish
+
+```bash
+cpp/tests/docker_smoke_test.sh <namespace>/evio-ejfat-replay:latest
+```
+
+### 4. Push
+
+`docker push` uploads one tag at a time; they all reference the same image, so
+only the first transfers layers.
+
+```bash
+docker push <namespace>/evio-ejfat-replay:"${VERSION}-e2sar${E2SAR}"
+docker push <namespace>/evio-ejfat-replay:"${VERSION}"
+docker push <namespace>/evio-ejfat-replay:"git-${REF}"
+docker push <namespace>/evio-ejfat-replay:latest
+```
+
+Or push every tag on the repository in one call:
+
+```bash
+docker push --all-tags <namespace>/evio-ejfat-replay
+```
+
+### Building and pushing in one step
+
+`buildx` can push straight to the registry instead of loading locally. This is
+the better choice in CI, and it is the *only* way to publish a multi-platform
+manifest — though this image is amd64-only, so that does not apply here.
+
+```bash
+docker buildx build --platform linux/amd64 \
+    --build-arg VCS_REF="$(git rev-parse HEAD)" \
+    --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -t <namespace>/evio-ejfat-replay:1.0.0-e2sar0.3.2 \
+    -t <namespace>/evio-ejfat-replay:latest \
+    --push .
+```
+
+The trade-off: with `--push` the image never lands in your local daemon, so
+you cannot run the smoke test against it first. Prefer `--load`, test, then
+`docker push` for a release you care about.
+
+### Verify what landed
+
+```bash
+docker buildx imagetools inspect <namespace>/evio-ejfat-replay:latest
+```
+
+That prints the manifest and platform without pulling the image. Expect a
+single `linux/amd64` entry. To read the labels back:
+
+```bash
+docker buildx imagetools inspect --raw <namespace>/evio-ejfat-replay:latest
+docker pull <namespace>/evio-ejfat-replay:latest
+docker image inspect <namespace>/evio-ejfat-replay:latest --format '{{json .Config.Labels}}'
+```
+
+### Pulling it on a DAQ node
+
+```bash
+docker pull <namespace>/evio-ejfat-replay:1.0.0-e2sar0.3.2
+
+docker run --rm -it --network host \
+    -v /path/to/captures:/data:ro \
+    <namespace>/evio-ejfat-replay:1.0.0-e2sar0.3.2 \
+    --file-count 2 --uri "$EJFAT_URI" --withcp --mtu 9000 \
+    evio_192.168.0.13.bin evio_192.168.0.16.bin
+```
+
+Pin the version tag on production nodes rather than `latest`, so a republish
+cannot silently change what runs.
+
+### Notes
+
+* **The image is public unless the Hub repository is private.** Nothing in it
+  is sensitive — no captures, no URI, no token — but check the repository's
+  visibility before the first push if that matters to you.
+* **Free-tier Docker Hub rate-limits anonymous pulls.** On a node that pulls
+  often, `docker login` first, or mirror the image into a lab registry.
+* **The image is `linux/amd64` only.** A pull on an arm64 host will fail with a
+  platform mismatch unless it is run under emulation with
+  `--platform linux/amd64`.
+
+---
+
 ## Show the help
 
 The default command is `--help`, so this prints the full option reference:

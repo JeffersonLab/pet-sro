@@ -220,3 +220,12 @@ USER 10001:10001
 # immediately on a second.
 ENTRYPOINT ["/usr/local/bin/evio_ejfat_replay"]
 CMD ["--help"]
+
+# Provenance, for images that get pushed to a registry. Deliberately last: both
+# values change on every commit, and everything after an ARG is cache-busted by
+# it, so keeping them here means a new revision rebuilds nothing but metadata.
+# Both default to empty, so an unlabelled local build stays fully cached.
+ARG VCS_REF=""
+ARG BUILD_DATE=""
+LABEL org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}"
