@@ -135,6 +135,30 @@ and computation pipelines.
     $ ./gradlew deploy
 
 
+## The C++ EVIO/EJFAT replay tools
+
+`cpp/` holds a standalone C++ tree — `evio_ejfat_replay`, which replays recorded
+FEB SRO capture files through an EJFAT load balancer, and `evio_ejfat_recv`,
+which reassembles them again. It does not go through Gradle. See
+[cpp/README.md](cpp/README.md) for the design and the full command-line
+reference, and [cpp/HOWTO.md](cpp/HOWTO.md) for an end-to-end loopback run.
+
+### In a container
+
+Building natively needs E2SAR 0.3.2 with gRPC 1.74.1, protobuf 31.1.0 and
+exactly Boost 1.89.0. The [Dockerfile](Dockerfile) installs all of that from
+Jefferson Lab's own E2SAR release package and produces a small runtime image,
+so a host needs nothing but Docker:
+
+    $ docker build -t pet-sro/evio-ejfat-replay:latest .
+    $ docker run --rm pet-sro/evio-ejfat-replay:latest --help
+
+**[DOCKER.md](DOCKER.md)** has the build and run commands in full — mounting
+captures read-only, passing the EJFAT URI without baking the token into the
+image, host networking, running the receiver, and building for `linux/amd64`
+from an arm64 laptop.
+
+
 # ERSAP Data-Stream Processing: Deployment and Execution Instructions
 This guide outlines the key steps to set up and run ERSAP-based data-stream processing applications. It covers environment variable configuration, automatic directory generation, and the primary components within the ERSAP directory structure.
 

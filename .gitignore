@@ -1,1 +1,6 @@
 /build/
+
+# Local EJFAT credentials referenced by DOCKER.md. The URI carries an instance
+# token; it must never be committed or baked into an image.
+ejfat.env
+*.env

@@ -1,0 +1,110 @@
+# Build context filter for the evio_ejfat_replay image.
+#
+# Only cpp/ is COPYed into the build, so most of this is about keeping the
+# context small and keeping captures, credentials and local artifacts out of
+# the daemon entirely.
+#
+# Rule order matters: the last pattern that matches a path decides. The three
+# sections below are (1) broad excludes, (2) re-include the C++ tree the build
+# needs, (3) hard excludes that must win even inside cpp/.
+
+# ---------------------------------------------------------------------------
+# 1. Broad excludes
+# ---------------------------------------------------------------------------
+
+# Version control and repository metadata
+**/.git
+**/.gitignore
+**/.gitattributes
+**/.gitmodules
+.github
+
+# Build directories and generated products
+build/
+**/build/
+cmake-build-*/
+**/CMakeFiles
+**/CMakeCache.txt
+**/CTestTestfile.cmake
+**/cmake_install.cmake
+**/compile_commands.json
+**/Testing
+out/
+dist/
+
+# Java / Gradle half of the repository -- not part of the C++ image
+.gradle/
+gradle/
+gradlew
+gradlew.bat
+build.gradle
+settings.gradle
+libs/
+src/
+
+# Editor, IDE and OS artifacts
+.idea/
+.vscode/
+.cache/
+.claude/
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+**/Thumbs.db
+
+# Logs, scratch space and documents
+**/*.log
+logs/
+tmp/
+scratch/
+**/*.pdf
+
+# Container files themselves (the Dockerfile is read out of band)
+Dockerfile
+Dockerfile.*
+.dockerignore
+DOCKER.md
+
+# ---------------------------------------------------------------------------
+# 2. Re-include the C++ tree -- the only thing the image build consumes
+# ---------------------------------------------------------------------------
+!cpp/
+!cpp/**
+
+# ---------------------------------------------------------------------------
+# 3. Hard excludes -- these win everywhere, cpp/ included
+# ---------------------------------------------------------------------------
+
+# Large EVIO captures and packet dumps: never baked into an image
+data/
+captures/
+**/*.bin
+**/*.evio
+**/*.pcap
+**/*.pcapng
+**/*.dat
+
+# Compiled objects and libraries that may be lying around in the tree
+**/*.o
+**/*.a
+**/*.so
+**/*.so.*
+**/*.dylib
+**/*.dSYM
+**/*.jar
+**/*.class
+
+# Credentials and site configuration
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.jks
+**/*.keystore
+secrets/
+**/credentials*
+**/*token*
+**/*secret*

@@ -162,7 +162,8 @@ cpp/
     ├── test_packetization.cpp
     ├── test_rebaser.cpp
     ├── test_event_view.cpp
-    └── test_real_captures.cpp  (registered only when data/ is present)
+    ├── test_real_captures.cpp  (registered only when data/ is present)
+    └── docker_smoke_test.sh    validates a built container image
 ```
 
 The four concerns the task calls out are in separate components: the EVIO reader
@@ -232,6 +233,23 @@ Built with `-Wall -Wextra -Wpedantic`, plus `-Wshadow -Wconversion
 cmake -S cpp -B build
 cmake --build build -j
 ```
+
+### In a container
+
+If E2SAR, gRPC 1.74.1, protobuf 31.1.0 and Boost 1.89.0 are not already
+installed, the repository's [Dockerfile](../Dockerfile) builds all of it from
+Jefferson Lab's own E2SAR release package and produces a runtime image with
+both executables and nothing else:
+
+```bash
+docker build -t pet-sro/evio-ejfat-replay:latest .          # from the repo root
+docker run --rm pet-sro/evio-ejfat-replay:latest --help
+```
+
+See [DOCKER.md](../DOCKER.md) for mounting captures, passing the EJFAT URI,
+host networking and cross-building for `linux/amd64`.
+
+### Native build
 
 To include EJFAT sending, put `e2sar.pc` on the search path first:
 
@@ -495,6 +513,16 @@ The unit tests build their own capture files from the layout `SroWireFormat`
 documents (`EvioFixtures.hpp`), in both on-disk formats, so they run anywhere.
 The synchronizer tests use `VectorEventSource`, a stub that replays a canned
 list of timestamps, so alignment logic is tested with no file system involved.
+
+**`docker_smoke_test.sh`** is separate from CTest: it validates a built
+container image rather than the code. Every container it starts runs with
+`--network none`, so it cannot emit traffic; beyond `--help` on both
+executables it does one `--dry-run` over a two-frame synthetic capture it
+writes itself. See [DOCKER.md](../DOCKER.md).
+
+```bash
+cpp/tests/docker_smoke_test.sh pet-sro/evio-ejfat-replay:latest
+```
 
 **`test_real_captures`** additionally checks the reader against genuine FEB
 captures in `<repo>/data`. Those files are tens of megabytes and are not tracked
