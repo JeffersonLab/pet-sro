@@ -73,7 +73,22 @@ DOCKER.md
 !cpp/**
 
 # ---------------------------------------------------------------------------
-# 3. Hard excludes -- these win everywhere, cpp/ included
+# 3. Things inside cpp/ that the build never reads
+#
+# `COPY cpp/ ./cpp/` sits above the CMake configure step, which costs ~6
+# minutes: pkg_check_modules(e2sar) makes 19 pkg-config queries and each one
+# re-walks gRPC's 206-file, 1214-edge .pc graph. Anything left in the context
+# therefore buys a six-minute rebuild every time it is edited, so the prose and
+# the host-side test script are kept out. CMake reads none of them -- only
+# CMakeLists.txt, include/, src/ and tests/*.cpp|hpp.
+# ---------------------------------------------------------------------------
+cpp/*.md
+cpp/**/*.md
+cpp/tests/docker_smoke_test.sh
+cpp/src/actor/services.yaml
+
+# ---------------------------------------------------------------------------
+# 4. Hard excludes -- these win everywhere, cpp/ included
 # ---------------------------------------------------------------------------
 
 # Large EVIO captures and packet dumps: never baked into an image
