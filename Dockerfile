@@ -125,20 +125,32 @@ RUN cmake --build build --parallel "$(nproc)"
 # Unit tests as a build gate. They need no network and no capture files.
 RUN ctest --test-dir build --output-on-failure
 
-# Collect exactly what the runtime stage needs: the two executables and, for
-# each, the shared objects ldd resolves under /usr/local. Each library is
-# copied under the SONAME the loader will ask for, dereferenced so no dangling
-# symlink survives the COPY.
+# Bring in the ERSAP plugin shared libraries so the dependency scan below
+# covers them. These are dlopen()ed at runtime by the ERSAP DPE and need
+# their own /usr/local/ transitive dependencies (Abseil, gRPC, Boost, upb)
+# in the runtime image -- none of which appear in ldd of the executables.
+COPY ersap/lib/ /tmp/ersap_lib/
+
+# Collect exactly what the runtime stage needs: the two executables and the
+# ERSAP plugin .so files, for each scanning the shared objects ldd resolves
+# under /usr/local. Each library is copied under the SONAME the loader will
+# ask for, dereferenced so no dangling symlink survives the COPY.
 #
-# Both are stripped. A Release build carries no debug info to begin with, so
-# this removes only the symbol table -- a large one, because libe2sar.a is
-# static and links in wholesale.
+# LD_LIBRARY_PATH lets ldd resolve libersap.so/libxmsg.so (which live in
+# ersap/lib on the host) when scanning the plugins; without it ldd reports
+# them as "not found" and skips their transitive /usr/local/ dependencies.
+#
+# Both executables are stripped. A Release build carries no debug info to
+# begin with, so this removes only the symbol table.
 RUN set -eux; \
     mkdir -p /out/bin /out/lib; \
     install -m 0755 build/evio_ejfat_replay build/evio_ejfat_recv /out/bin/; \
-    for bin in /out/bin/*; do \
-        ldd "$bin" | awk '/=> \/usr\/local\//{print $1 " " $3}'; \
-    done | sort -u > /tmp/needed.txt; \
+    export LD_LIBRARY_PATH=/tmp/ersap_lib; \
+    { \
+      for bin in /out/bin/*; do ldd "$bin"; done; \
+      find /tmp/ersap_lib -maxdepth 1 -name '*.so' \! -type l | \
+          while read -r lib; do ldd "$lib" 2>/dev/null; done; \
+    } | awk '/=> \/usr\/local\//{print $1 " " $3}' | sort -u > /tmp/needed.txt; \
     test -s /tmp/needed.txt; \
     while read -r soname path; do \
         cp -L "$path" "/out/lib/$soname"; \
