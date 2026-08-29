@@ -148,7 +148,7 @@ RUN set -eux; \
     export LD_LIBRARY_PATH=/tmp/ersap_lib; \
     { \
       for bin in /out/bin/*; do ldd "$bin"; done; \
-      find /tmp/ersap_lib -maxdepth 1 -name '*.so' \! -type l | \
+      find /tmp/ersap_lib -maxdepth 1 -name '*.so*' -type f | \
           while read -r lib; do ldd "$lib" 2>/dev/null; done; \
     } | awk '/=> \/usr\/local\//{print $1 " " $3}' | sort -u > /tmp/needed.txt; \
     test -s /tmp/needed.txt; \
