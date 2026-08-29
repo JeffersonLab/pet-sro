@@ -123,3 +123,15 @@ secrets/
 **/credentials*
 **/*token*
 **/*secret*
+
+# ---------------------------------------------------------------------------
+# 5. Re-include ERSAP runtime tree (needed by the interactive stage)
+#
+# Sections 1 and 4 above exclude **/*.so, **/*.so.*, and **/*.jar -- patterns
+# that match the shared libraries and JARs that ersap/ carries. These re-
+# includes must be last so they win over those broad exclusions. The NFS ghost
+# files left over from shared-filesystem checkouts are still kept out.
+# ---------------------------------------------------------------------------
+!ersap/
+!ersap/**
+ersap/**/.nfs*

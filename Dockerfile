@@ -168,10 +168,11 @@ LABEL org.opencontainers.image.title="evio_ejfat_replay" \
 # built image: which E2SAR the binaries were linked against.
 LABEL org.jlab.e2sar.version="${E2SAR_VERSION}"
 
-# Only two things are missing from the bare base: the CA bundle gRPC needs to
-# validate the control plane's TLS certificate, and libre2, which libgrpc links
-# against. Everything else (libstdc++, libssl, libsystemd, libz, ...) is
-# already in ubuntu:24.04.
+# Runtime dependencies:
+#   ca-certificates    -- gRPC TLS validation
+#   libre2-10          -- libgrpc runtime dependency
+#   openjdk-21-jre-headless -- ERSAP is a Java framework; bin/ scripts invoke
+#                           `java` directly, so no JRE means no orchestrator
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eux; \
@@ -180,7 +181,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        libre2-10; \
+        libre2-10 \
+        openjdk-21-jre-headless; \
     rm -rf /var/log/apt /var/log/dpkg.log
 
 COPY --from=builder /out/lib/ /usr/local/lib/
@@ -201,25 +203,35 @@ RUN set -eux; \
     done; \
     rm -f /tmp/ldd.txt
 
-# Dedicated unprivileged account. No home directory is written to at runtime.
-# Not --system: the id is deliberately above SYS_UID_MAX so it cannot collide
-# with a distribution service account, and --system would only warn about that.
+# Dedicated unprivileged account with a home directory and bash so that an
+# interactive shell session works out of the box. Not --system: the id is
+# deliberately above SYS_UID_MAX so it cannot collide with a distribution
+# service account.
 RUN groupadd --gid 10001 petsro && \
-    useradd --uid 10001 --gid 10001 --no-create-home \
-            --shell /usr/sbin/nologin petsro
+    useradd --uid 10001 --gid 10001 --create-home \
+            --shell /bin/bash petsro
+
+# ERSAP runtime tree and the environment setup script. Placed under
+# /opt/petsro so that `source env.sh` (which sets ERSAP_HOME=$(pwd)/ersap)
+# resolves correctly when the shell starts in that directory.
+COPY --chown=10001:10001 env.sh /opt/petsro/env.sh
+COPY --chown=10001:10001 ersap/ /opt/petsro/ersap/
 
 # Captures are mounted here read-only, so relative file arguments resolve.
-# Created world-readable-and-traversable; the mount itself supplies the files.
 RUN install -d -m 0755 -o petsro -g petsro /data
-WORKDIR /data
+
+# Start in the project root so the user can immediately run `source env.sh`
+# and `cd ersap` without navigating first.
+WORKDIR /opt/petsro
 
 USER 10001:10001
 
-# Exec form: the replay program is PID 1 and receives SIGINT/SIGTERM directly.
-# It installs handlers for both and shuts down cleanly on the first, exiting
-# immediately on a second.
-ENTRYPOINT ["/usr/local/bin/evio_ejfat_replay"]
-CMD ["--help"]
+# Interactive bash login shell. The -l flag sources /etc/profile, which puts
+# the OpenJDK binaries on PATH so ERSAP's bin/ scripts find `java`.
+# To run evio_ejfat_replay non-interactively, override the entrypoint:
+#   docker run --entrypoint /usr/local/bin/evio_ejfat_replay <image> [args]
+ENTRYPOINT ["/bin/bash"]
+CMD ["-l"]
 
 # Provenance, for images that get pushed to a registry. Deliberately last: both
 # values change on every commit, and everything after an ARG is cache-busted by
