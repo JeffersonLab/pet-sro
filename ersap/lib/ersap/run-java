@@ -1,0 +1,35 @@
+#!/bin/sh
+
+#
+# Copyright (c) 2021.  Jefferson Science Associates, LLC.
+# Subject to the terms in the LICENSE file found in the top-level directory.
+# Author gyurjyan
+#
+
+java_dist=
+case "$(uname)" in
+    "Linux")
+        if [ "$(uname -m)" = "x86_64" ]; then
+            java_dist=$ERSAP_HOME/jre/linux-64/jre
+        else
+            java_dist=$ERSAP_HOME/jre/linux-i586/jre
+        fi
+        ;;
+
+    "Darwin")
+        java_dist=$ERSAP_HOME/jre/macosx-64/jre/Contents/Home
+        ;;
+
+    *)  ;;
+esac
+if [ -n "$java_dist" ] && [ -d "$java_dist" ]; then
+    export JAVA_HOME="$java_dist"
+fi
+
+if [ -n "$JAVA_HOME" ]; then
+    java_bin="$JAVA_HOME/bin/java"
+else
+    java_bin=java
+fi
+
+exec "$java_bin" "$@"

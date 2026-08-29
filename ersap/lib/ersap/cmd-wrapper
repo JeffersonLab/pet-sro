@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+#
+# Copyright (c) 2021.  Jefferson Science Associates, LLC.
+# Subject to the terms in the LICENSE file found in the top-level directory.
+# Author gyurjyan
+#
+
+try_perl() {
+    perl -MPOSIX -e ';' 1>/dev/null 2>&1
+}
+
+if ! try_perl; then
+    set -m
+fi
+
+trap '' INT
+trap 'kill -TERM $pid' TERM
+
+if try_perl; then
+    perl -MPOSIX -e 'setpgid 0,0; exec @ARGV' "$@" &
+    pid=$!
+else
+    "$@" &
+    pid=$!
+fi
+
+wait $pid
+trap - TERM
+wait $pid
+exit $?

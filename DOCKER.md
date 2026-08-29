@@ -1,3 +1,10 @@
+# Building docker image
+docker build -t pet-sro:v1 .
+docker login
+docker tag pet-sro:v1 gurjyan/pet-sro:v1
+docker push gurjyan/pet-sro:v1
+
+
 # Running `evio_ejfat_replay` in a container
 
 This image builds and runs the C++ tree under [`cpp/`](cpp/) — the EVIO replay

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+#
+# Copyright (c) 2021.  Jefferson Science Associates, LLC.
+# Subject to the terms in the LICENSE file found in the top-level directory.
+# Author gyurjyan
+#
+
+BASEDIR=$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)
+
+if [ -z "${ERSAP_HOME}" ]; then
+    ERSAP_HOME=${BASEDIR}
+    export ERSAP_HOME
+fi
+
+# find plugins directory
+if [ -n "${ERSAP_PLUGINS}" ]; then
+    if [ ! -d "${ERSAP_PLUGINS}" ]; then
+        echo "Error: \$ERSAP_PLUGINS is not a directory."
+        exit 1
+    fi
+    plugins_dir="${ERSAP_PLUGINS}"
+else
+    plugins_dir="${ERSAP_HOME}/plugins"
+fi
+
+# set default classpath
+if [ -z "${CLASSPATH}" ]; then
+    CLASSPATH="${ERSAP_HOME}/lib/*"
+
+    # Add every plugin
+    for plugin in "${plugins_dir}"/*/; do
+        plugin=${plugin%*/}
+            CLASSPATH+=":${plugin}/lib/*"
+    done
+
+    CLASSPATH+=":${ERSAP_HOME}/services/*"
+    export CLASSPATH
+fi
+# set java.library.path
+java_lib_path=
+for plugin in "${plugins_dir}"/*/; do
+    plugin=${plugin%*/}
+        java_lib_path+=":${plugin}/lib"
+done
+
+if [ -n "${JAVA_OPTS}" ]; then
+    jvm_options=(${JAVA_OPTS})
+else
+    jvm_options=(-Xms1024m -XX:+UseNUMA -XX:+UseBiasedLocking)
+#jvm_options=(-Xms3g -Xmx3g -XX:NewRatio=3 -XX:MaxNewSize=1g -XX:SurvivorRatio=6 -XX:+UseNUMA -XX:+TieredCompilation -XX:+UseBiasedLocking -XX:+AggressiveOpts)
+fi
+
+java_wrapper=${ERSAP_HOME}/lib/ersap/run-java
+
+exec "${java_wrapper}" "${jvm_options[@]}" -Djava.library.path="${java_lib_path}" org.jlab.epsci.ersap.sys.Dpe "$@"

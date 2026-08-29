@@ -1,50 +1,12 @@
 # HowTo: replay EVIO files through EJFAT, with no load balancer
 
-End-to-end loopback test of the whole chain — file reader → packetizer → UDP →
-reassembler → EVIO statistics — with **no control plane and no load balancer**.
-
-Everything below runs on one host. Two terminals.
-
----
-
-## 1. Build
-
-##########  For MacOS. This will automatically export PKG_CONFIG_PATH
-- conda create -n e2sar \
-  --override-channels \
-  -c ibaldin \
-  -c conda-forge \
-  --strict-channel-priority \
-  python=3.11 \
-  e2sar
-
-- conda env config vars set \
-  PKG_CONFIG_PATH="$CONDA_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-
-
-- conda deactivate
-- conda activate e2sar
-
-- conda install \
-  --override-channels \
-  -c ibaldin \
-  -c conda-forge \
-  --strict-channel-priority \
-  "libboost-devel=1.89"
-
-- pkg-config --modversion e2sar
-- conda list | grep -E 'boost|e2sar'
-
-#####################
-
-
-Both programs need E2SAR. Put its `e2sar.pc` on the pkg-config path first:
-
 ```bash
 export PKG_CONFIG_PATH=/path/to/e2sar/lib/pkgconfig:$PKG_CONFIG_PATH
 
 cmake -S cpp -B build
 cmake --build build -j
+cmake --install build
+
 ```
 
 Confirm the configure summary says `EJFAT sending : ON`. If it says `OFF`,
@@ -87,7 +49,18 @@ E2SAR's own no-CP test.
     --event-timeout 500 \
     --stats-interval 5
 ```
+or
+```
+./build/evio_ejfat_recv \
+--withcp \
+--uri $EJFAT_URI \
+--recv-ip 129.57.177.19  \
+--recv-port 10000  \
+--recv-threads 1  \
+--event-timeout 500 \
+--stats-interval 5
 
+```
 It prints its listening ports and then waits:
 
 ```text
@@ -114,9 +87,21 @@ above:
     --loop-limit 2 \
     --stats-interval 5
 ```
+OR
+```
+./build/evio_ejfat_replay \
+--file-count 2 \
+--file data/evio_192.168.0.13.bin \
+--file data/evio_192.168.0.16.bin \
+--withcp \
+--uri $EJFAT_URI \
+--mtu 9000 \
+--rate 1.0 \
+--loop-limit 100 \
+--stats-interval 5
 
-No `--withcp`, so the sender neither registers with a load balancer nor sends
-sync packets.
+```
+No `--withcp`, so the sender neither registers with a load balancer nor sends sync packets.
 
 `--rate 1.0` caps the send at 1 Gbps. Over loopback with no shaping the sender
 will happily outrun a single-threaded reassembler and you will see loss that

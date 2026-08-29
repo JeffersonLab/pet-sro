@@ -1,0 +1,12 @@
+prefix=/daqfs/home/gurjyan/DImages/haidis-image/e2sar-utils/ersap
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: ERSAP
+Description: Reactive data-stream processing framework
+Version: 
+Libs: -L${libdir} -lersap
+Cflags: -I${includedir}
+Requires: xmsg
+Requires.private: 
