@@ -182,6 +182,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         libre2-10 \
+        libzmq5 \
         openjdk-21-jre-headless; \
     rm -rf /var/log/apt /var/log/dpkg.log
 
@@ -216,6 +217,11 @@ RUN groupadd --gid 10001 petsro && \
 # resolves correctly when the shell starts in that directory.
 COPY --chown=10001:10001 env.sh /opt/petsro/env.sh
 COPY --chown=10001:10001 ersap/ /opt/petsro/ersap/
+
+# -XX:+UseBiasedLocking was removed in Java 18; Java 21 rejects it as a fatal
+# error. Strip it from every ERSAP launcher script.
+RUN find /opt/petsro/ersap/bin -type f \
+        -exec sed -i 's/-XX:+UseBiasedLocking//g' {} +
 
 # Captures are mounted here read-only, so relative file arguments resolve.
 RUN install -d -m 0755 -o petsro -g petsro /data
