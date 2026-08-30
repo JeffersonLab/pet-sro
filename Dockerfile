@@ -193,6 +193,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
+        gettext-base \
         libre2-10 \
         libzmq5 \
         openjdk-21-jre-headless; \
