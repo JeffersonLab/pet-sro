@@ -197,7 +197,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libre2-10 \
         libzmq5 \
         openjdk-21-jre-headless; \
-    rm -rf /var/log/apt /var/log/dpkg.log
+    rm -rf /var/log/apt /var/log/dpkg.log; \
+    ln -s /usr/lib/x86_64-linux-gnu/libre2.so.10 \
+          /usr/lib/x86_64-linux-gnu/libre2.so.9
 
 COPY --from=builder /out/lib/ /usr/local/lib/
 COPY --from=builder /out/bin/ /usr/local/bin/
