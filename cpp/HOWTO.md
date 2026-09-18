@@ -1,4 +1,5 @@
 # HowTo: replay EVIO files through EJFAT, with no load balancer
+N.B. ERSAP_HOME must be set for isntall
 
 ```bash
 export PKG_CONFIG_PATH=/path/to/e2sar/lib/pkgconfig:$PKG_CONFIG_PATH
