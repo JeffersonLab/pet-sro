@@ -95,8 +95,11 @@ class ReplayLoop {
     ReplayStats stats_;
     std::string lastError_;
 
-    /// EJFAT event number of the next event to be sent. Starts at 1 because
-    /// E2SAR treats 0 as "do not override the internal counter".
+    /// EJFAT event number of the next synchronized group to be sent. All N
+    /// events of one group share this value so the LB routes them to the same
+    /// receiver host; receivers tell members apart by the RE-header dataId.
+    /// Starts at 1 because E2SAR treats 0 as "do not override the internal
+    /// counter".
     std::uint64_t nextEventNumber_ = 1;
 
     TimestampRebaser rebaser_;

@@ -217,7 +217,7 @@ TEST(data_ids_map_deterministically_from_the_file_index) {
     }
 }
 
-TEST(event_numbers_are_monotonic_and_start_at_one) {
+TEST(event_numbers_are_monotonic_per_group_and_start_at_one) {
     const auto files = makeAlignedCaptures(2, 3);
     MockPacketSink sink(MAX_PLD_1500);
 
@@ -230,10 +230,12 @@ TEST(event_numbers_are_monotonic_and_start_at_one) {
 
     const auto& sent = sink.sent();
     CHECK_EQ(sent.size(), std::size_t{12});  // 2 loops x 3 groups x 2 streams
+    // One event number per synchronized group, so 2 streams share it and the
+    // number advances between groups. Starts at 1 (0 is reserved by E2SAR) and
+    // keeps increasing across replay loops.
     for (std::size_t i = 0; i < sent.size(); ++i) {
-        // E2SAR treats event number 0 as "do not override", so numbering must
-        // begin at 1 and never repeat across replay loops.
-        CHECK_EQ(sent[i].eventNumber, static_cast<std::uint64_t>(i + 1));
+        const std::uint64_t expected = static_cast<std::uint64_t>(i / 2 + 1);
+        CHECK_EQ(sent[i].eventNumber, expected);
     }
 }
 
@@ -251,10 +253,44 @@ TEST(event_numbers_restart_when_configured_to) {
 
     const auto& sent = sink.sent();
     CHECK_EQ(sent.size(), std::size_t{8});
+    // 2 groups per loop, 2 streams per group: numbers go 1,1,2,2,1,1,2,2.
     CHECK_EQ(sent[0].eventNumber, 1U);
-    CHECK_EQ(sent[3].eventNumber, 4U);
+    CHECK_EQ(sent[1].eventNumber, 1U);
+    CHECK_EQ(sent[2].eventNumber, 2U);
+    CHECK_EQ(sent[3].eventNumber, 2U);
     CHECK_EQ(sent[4].eventNumber, 1U);  // second loop restarts
-    CHECK_EQ(sent[7].eventNumber, 4U);
+    CHECK_EQ(sent[5].eventNumber, 1U);
+    CHECK_EQ(sent[6].eventNumber, 2U);
+    CHECK_EQ(sent[7].eventNumber, 2U);
+}
+
+TEST(all_events_in_a_group_share_one_event_number) {
+    // Three streams so every group has three members with distinct dataIds.
+    const auto files = makeAlignedCaptures(3, 5);
+    MockPacketSink sink(MAX_PLD_1500);
+
+    ReplayLoopConfig config;
+    config.loopLimit = 1;
+    config.statsIntervalSeconds = 0.0;
+
+    ReplayLoop loop(readersFor(files), sink, config);
+    CHECK(loop.run(neverShutdown()));
+
+    const auto& sent = sink.sent();
+    CHECK_EQ(sent.size(), std::size_t{15});  // 5 groups x 3 streams
+
+    // Members of a group carry the same event number so the LB routes them all
+    // to the same receiver host. The event number advances by one per group.
+    for (std::size_t g = 0; g < 5; ++g) {
+        const std::uint64_t tick = sent[g * 3].eventNumber;
+        CHECK_EQ(tick, static_cast<std::uint64_t>(g + 1));
+        CHECK_EQ(sent[g * 3 + 1].eventNumber, tick);
+        CHECK_EQ(sent[g * 3 + 2].eventNumber, tick);
+        // Members are distinguished by dataId, which remains per-stream unique.
+        CHECK_EQ(sent[g * 3 + 0].dataId, static_cast<std::uint16_t>(1));
+        CHECK_EQ(sent[g * 3 + 1].dataId, static_cast<std::uint16_t>(2));
+        CHECK_EQ(sent[g * 3 + 2].dataId, static_cast<std::uint16_t>(3));
+    }
 }
 
 TEST(entropy_is_per_source_when_requested) {

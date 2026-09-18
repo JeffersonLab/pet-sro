@@ -86,6 +86,7 @@ add_library(evio_ejfat_replay_core STATIC
     src/EventSynchronizer.cpp
     src/EjfatSender.cpp
     src/EjfatReceiver.cpp
+    src/EvioAggregator.cpp
     src/ReceiveStats.cpp
     src/ReplayLoop.cpp
     src/ReplayStats.cpp

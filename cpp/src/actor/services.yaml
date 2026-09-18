@@ -43,6 +43,13 @@ configuration:
       stats-interval: 5
       verbose: false
       quiet: false
+      # Aggregation. group-size is the number of streams the sender is
+      # producing; every synchronized group of that many per-stream events
+      # is combined into one EVIO v6 record. See src/actor/README.md.
+      group-size: 2
+      group-timeout: 500
+      partial-groups: drop
+      max-open-groups: 4096
       # Actor-specific, see README.md
       validation: structural
       output-mime: binary/data-evio

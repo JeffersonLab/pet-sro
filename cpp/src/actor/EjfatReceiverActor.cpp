@@ -6,43 +6,44 @@
  * 12000, Jefferson Ave, Newport News, VA 23606
  * Phone : (757)-269-7100
  *
- * Implementation of the EJFAT receiver ERSAP actor.
+ * Implementation of the EJFAT receiver ERSAP actor with per-tick aggregation.
  *
  * What is published
  * -----------------
  * The E2SAR Reassembler returns the segmenter's original event payload with
  * every transport header (UDP, LB, RE) already removed. For this project's
- * sender -- ReplayLoop::sendGroup(), one OutgoingEvent per EvioEvent -- that
- * payload is exactly one EVIO block in big-endian wire form, block-length word
- * included. This actor forwards those bytes unchanged. It adds no length
- * prefix, no envelope and no metadata to the payload; the EJFAT event number
- * travels in the ERSAP communication id instead, where it costs the payload
- * nothing.
+ * sender that payload is one EVIO v4 block containing exactly one event
+ * bank, in big-endian wire form. The aggregator collects the group's N such
+ * blocks -- all carrying the same LB tick, distinguished by dataId -- and
+ * builds one EVIO v6 record whose payload is the N event banks concatenated
+ * (see EvioAggregator::buildEvioV6Record for the exact layout). That record
+ * is what this actor forwards. No length prefix, no envelope, no metadata is
+ * added on top; the tick travels in the ERSAP communication id.
  *
  * Byte order on the wire to Java
  * ------------------------------
- * ERSAP carries the byte order in xMsgMeta.byteOrder, which is a proto2
- * `optional` with no explicit default over an enum that declares `Little = 1`
- * first -- so an unset field reads back as Little. ersap-cpp never sets it, and
- * Java's DataUtil.deserialize() therefore calls
- * `bb.order(ByteOrder.LITTLE_ENDIAN)` on every buffer a C++ actor publishes.
- * The bytes are right; only the ByteBuffer's order flag is wrong for a
- * big-endian EVIO payload, and `EngineData::meta_` is private, so this actor
- * has no way to correct it from here.
+ * ERSAP carries the byte order in xMsgMeta.byteOrder, a proto2 `optional`
+ * over an enum whose first constant is `Little = 1`, so an unset field reads
+ * back as Little. ersap-cpp never sets it, and Java's DataUtil.deserialize()
+ * therefore calls `bb.order(ByteOrder.LITTLE_ENDIAN)` on every buffer a C++
+ * actor publishes. The bytes are right; only the ByteBuffer's order flag is
+ * wrong for a big-endian EVIO v6 payload, and `EngineData::meta_` is private,
+ * so this actor has no way to correct it from here.
  *
- * That is why the default output type is binary/data-evio rather than a plain
- * raw-bytes type: its Java counterpart, EvioBlockDataType, restores
- * BIG_ENDIAN in the deserializer, where no processing actor can forget it.
+ * That is why the default output type is binary/data-evio rather than a
+ * plain raw-bytes type: its Java counterpart, EvioBlockDataType, restores
+ * BIG_ENDIAN in the deserializer, which is the byte order EVIO v6 needs
+ * exactly as much as v4 did.
  *
  * Why not binary/coda-time-frame
  * ------------------------------
  * CodaTimeFrameBinaryDataType carries a decoded object (time frames -> ROC
- * banks -> FADC hits), not EVIO bytes. Producing one from a FEB SRO block
- * requires the bit layout of the TDC hit words at word 24 and beyond, which is
- * documented only in org.jlab.detimg.petiroc (PetirocJava); that tree is not
- * present in this checkout, and SroWireFormat.hpp names the hit words without
- * decoding them. Rather than invent a mapping, configure() rejects that MIME
- * type with an explanation. See cpp/src/actor/README.md.
+ * banks -> FADC hits), not EVIO bytes. Producing one from an FEB SRO event
+ * requires the bit layout of the TDC hit words at word 24 and beyond, which
+ * is documented only in org.jlab.detimg.petiroc (PetirocJava); that tree is
+ * not present in this checkout, and SroWireFormat.hpp names the hit words
+ * without decoding them. configure() rejects that MIME type with an
+ * explanation.
  *
  * @author gurjyan
  * @project pet-sro
@@ -81,9 +82,9 @@ using Clock = std::chrono::steady_clock;
 ///
 /// Deliberately identical to ersap-cpp's RawBytesSerializer and to the Java
 /// EngineDataType.BYTES serializer that JavaObjectType.JOBJ reuses: the wire
-/// image is the byte sequence itself, with no framing of any kind. That is what
-/// makes "binary/data-jobj" from this actor readable by a Java actor declaring
-/// JavaObjectType.JOBJ without a single byte of translation.
+/// image is the byte sequence itself, with no framing of any kind. That is
+/// what makes "binary/data-jobj" from this actor readable by a Java actor
+/// declaring JavaObjectType.JOBJ without a single byte of translation.
 class RawPayloadSerializer final : public ersap::Serializer {
   public:
     std::vector<std::uint8_t> write(const ersap::any& data) const override {
@@ -91,7 +92,6 @@ class RawPayloadSerializer final : public ersap::Serializer {
     }
 
     std::vector<std::uint8_t> write(ersap::any&& data) const override {
-        // Moves the payload out of the EngineData instead of copying it.
         return ersap::any_cast<std::vector<std::uint8_t>>(std::move(data));
     }
 
@@ -104,24 +104,18 @@ class RawPayloadSerializer final : public ersap::Serializer {
     }
 };
 
-/// The default data type: one big-endian EVIO block. A function-local static so
-/// that its lifetime covers every published event and no static-initialisation
-/// order matters.
 const ersap::EngineDataType& evioBlockType() {
     static const ersap::EngineDataType type{MIME_EVIO_BLOCK,
                                             std::make_unique<RawPayloadSerializer>()};
     return type;
 }
 
-/// The JOBJ-compatible data type, for a Java chain that already declares
-/// JavaObjectType.JOBJ and corrects the byte order itself.
 const ersap::EngineDataType& jobjType() {
     static const ersap::EngineDataType type{MIME_JOBJ,
                                             std::make_unique<RawPayloadSerializer>()};
     return type;
 }
 
-/// ersap::type::BYTES under its own name, for chaining behind a native actor.
 const ersap::EngineDataType& bytesType() {
     static const ersap::EngineDataType type{MIME_BYTES,
                                             std::make_unique<RawPayloadSerializer>()};
@@ -131,9 +125,10 @@ const ersap::EngineDataType& bytesType() {
 /// Every key configure() understands. Anything else is reported, so a typo in
 /// the YAML is visible immediately rather than silently ignored.
 const char* const KNOWN_KEYS[] = {
-    "uri",          "recv-ip",     "recv-port",      "recv-threads", "event-timeout",
-    "poll-timeout", "withcp",      "novalidate",     "max-events",   "stats-interval",
-    "verbose",      "quiet",       "validation",     "output-mime",  "queue-size",
+    "uri",           "recv-ip",      "recv-port",       "recv-threads",  "event-timeout",
+    "poll-timeout",  "withcp",       "novalidate",      "max-events",    "stats-interval",
+    "verbose",       "quiet",        "validation",      "output-mime",   "queue-size",
+    "group-size",    "group-timeout", "partial-groups", "max-open-groups",
 };
 
 bool isKnownKey(const std::string& key) {
@@ -145,8 +140,6 @@ bool isKnownKey(const std::string& key) {
     return false;
 }
 
-/// Reads a JSON boolean, insisting on the right type rather than silently
-/// treating a string "true" as false.
 bool readBool(const json11::Json& cfg, const char* key, bool current, std::string& problem) {
     const json11::Json& v = cfg[key];
     if (v.is_null()) {
@@ -159,8 +152,6 @@ bool readBool(const json11::Json& cfg, const char* key, bool current, std::strin
     return v.bool_value();
 }
 
-/// Reads a JSON number, with an inclusive range check. `lo`/`hi` are doubles so
-/// one helper serves the 16-bit port, the 64-bit event cap and the interval.
 double readNumber(const json11::Json& cfg, const char* key, double current, double lo, double hi,
                   std::string& problem) {
     const json11::Json& v = cfg[key];
@@ -204,38 +195,51 @@ EjfatReceiverActor::~EjfatReceiverActor() { shutdown(); }
 
 std::string EjfatReceiverActor::configurationHelp() {
     std::ostringstream oss;
-    oss << "EjfatReceiverActor configuration keys (all optional except uri):\n"
-        << "  uri            string   (required)   EJFAT URI. Without withcp only its\n"
+    oss << "EjfatReceiverActor configuration keys (uri and group-size required):\n"
+        << "  uri             string   (required)  EJFAT URI. Without withcp only its\n"
         << "                                       data= address is used.\n"
-        << "  recv-ip        string   127.0.0.1    local IP address to listen on\n"
-        << "  recv-port      integer  10000        starting UDP port; must match the\n"
+        << "  recv-ip         string   127.0.0.1   local IP address to listen on\n"
+        << "  recv-port       integer  10000       starting UDP port; must match the\n"
         << "                                       sender's data= port\n"
-        << "  recv-threads   integer  1            number of reassembly threads (>= 1)\n"
-        << "  event-timeout  integer  500          ms before an incomplete event is\n"
-        << "                                       abandoned (> 0)\n"
-        << "  poll-timeout   integer  1000         ms recvEvent() waits before returning\n"
+        << "  recv-threads    integer  1           number of reassembly threads (>= 1)\n"
+        << "  event-timeout   integer  500         ms before an incomplete event is\n"
+        << "                                       abandoned by the reassembler (> 0)\n"
+        << "  poll-timeout    integer  1000        ms recvEvent() waits before returning\n"
         << "                                       without an event (> 0)\n"
-        << "  withcp         boolean  false        use the EJFAT control plane\n"
-        << "  novalidate     boolean  false        skip control-plane SSL certificate\n"
+        << "  withcp          boolean  false       use the EJFAT control plane\n"
+        << "  novalidate      boolean  false       skip control-plane SSL certificate\n"
         << "                                       validation; applies only with withcp\n"
-        << "  max-events     integer  0            stop after this many complete events;\n"
+        << "  max-events      integer  0           stop after this many complete events\n"
+        << "                                       received from the wire (per-stream);\n"
         << "                                       0 means run until the actor is stopped\n"
-        << "  stats-interval integer  5            seconds between progress messages;\n"
+        << "  stats-interval  integer  5           seconds between progress messages;\n"
         << "                                       0 disables them\n"
-        << "  verbose        boolean  false        log one line per received event\n"
-        << "  quiet          boolean  false        log only warnings and errors;\n"
+        << "  verbose         boolean  false       log one line per received event\n"
+        << "  quiet           boolean  false       log only warnings and errors;\n"
         << "                                       mutually exclusive with verbose\n"
         << "\n"
+        << "  Aggregation:\n"
+        << "  group-size      integer  (required)  number of streams the sender is\n"
+        << "                                       producing, i.e. the number of\n"
+        << "                                       members expected per group\n"
+        << "  group-timeout   integer  500         ms a group may sit open waiting for\n"
+        << "                                       stragglers before being reaped (> 0)\n"
+        << "  partial-groups  string   drop        what to do with groups that time out\n"
+        << "                                       with fewer than group-size members:\n"
+        << "                                       drop | emit-partial\n"
+        << "  max-open-groups integer  4096        safety cap on open groups; the\n"
+        << "                                       oldest is evicted when hit\n"
+        << "\n"
         << "  Actor-specific keys, not present in evio_ejfat_recv:\n"
-        << "  validation     string   structural   payload validation depth:\n"
+        << "  validation      string   structural  payload validation depth:\n"
         << "                                       none | structural | strict\n"
-        << "  output-mime    string   " << MIME_EVIO_BLOCK << "  published ERSAP data type:\n"
+        << "  output-mime     string   " << MIME_EVIO_BLOCK << "  published ERSAP data type:\n"
         << "                                       " << MIME_EVIO_BLOCK << " (default; its Java\n"
         << "                                       counterpart restores BIG_ENDIAN)\n"
         << "                                       " << MIME_JOBJ << " | " << MIME_BYTES
         << '\n'
-        << "  queue-size     integer  256          events buffered between the receive\n"
-        << "                                       thread and execute() (>= 1)\n";
+        << "  queue-size      integer  256         aggregated groups buffered between\n"
+        << "                                       the pump thread and execute() (>= 1)\n";
     return oss.str();
 }
 
@@ -245,8 +249,10 @@ ersap::EngineData EjfatReceiverActor::configure(ersap::EngineData& input) {
     // A reconfigure must not leave the previous receiver running.
     shutdown();
 
-    // Start from the defaults the executable uses, so the two cannot drift.
+    // Start from the defaults, so the actor and any code sharing these
+    // structs cannot drift.
     receiverConfig_ = EjfatReceiverConfig{};
+    aggregatorConfig_ = EvioAggregatorConfig{};
     validation_ = ValidationLevel::Structural;
     outputMime_ = MIME_EVIO_BLOCK;
     queueSize_ = 256;
@@ -326,9 +332,6 @@ ersap::EngineData EjfatReceiverActor::configure(ersap::EngineData& input) {
     note(field);
     field.clear();
 
-    // novalidate is the inverse of the receiver's validateCert, exactly as the
-    // executable's --novalidate switch is, and it only reaches E2SAR when the
-    // control plane is in use.
     const bool novalidate = readBool(cfg, "novalidate", false, field);
     note(field);
     field.clear();
@@ -371,6 +374,39 @@ ersap::EngineData EjfatReceiverActor::configure(ersap::EngineData& input) {
     note(field);
     field.clear();
 
+    // Aggregation keys. group-size has no default: an unset value is a
+    // configuration error, because there is no safe fallback (assuming 1
+    // would silently disable aggregation, which is not what the user asked
+    // for). Read it as -1 to detect the absent case.
+    const int groupSizeRead = static_cast<int>(
+        readNumber(cfg, "group-size", -1.0, -1.0, 65535.0, field));
+    note(field);
+    field.clear();
+    if (groupSizeRead < 0) {
+        return fail("group-size is required and must be at least 1");
+    }
+    aggregatorConfig_.groupSize = static_cast<std::size_t>(groupSizeRead);
+
+    aggregatorConfig_.groupTimeoutMs = static_cast<int>(readNumber(
+        cfg, "group-timeout", static_cast<double>(aggregatorConfig_.groupTimeoutMs), 1.0,
+        3600000.0, field));
+    note(field);
+    field.clear();
+
+    const std::string partialText = readString(cfg, "partial-groups",
+                                               toString(aggregatorConfig_.onPartial), field);
+    note(field);
+    field.clear();
+    if (!parsePartialGroupPolicy(partialText, aggregatorConfig_.onPartial)) {
+        note("partial-groups must be one of drop, emit-partial (got '" + partialText + "')");
+    }
+
+    aggregatorConfig_.maxOpenGroups = static_cast<std::size_t>(readNumber(
+        cfg, "max-open-groups", static_cast<double>(aggregatorConfig_.maxOpenGroups), 1.0,
+        1000000.0, field));
+    note(field);
+    field.clear();
+
     if (!problem.empty()) {
         return fail(problem);
     }
@@ -390,11 +426,13 @@ ersap::EngineData EjfatReceiverActor::configure(ersap::EngineData& input) {
                     outputMime_ + "')");
     }
 
-    // Everything the receiver itself insists on: uri present, positive
-    // timeouts, at least one thread, verbose and quiet not both set.
     const std::string receiverProblem = receiverConfig_.validate();
     if (!receiverProblem.empty()) {
         return fail(receiverProblem);
+    }
+    const std::string aggregatorProblem = aggregatorConfig_.validate();
+    if (!aggregatorProblem.empty()) {
+        return fail(aggregatorProblem);
     }
 
     std::string error;
@@ -402,6 +440,7 @@ ersap::EngineData EjfatReceiverActor::configure(ersap::EngineData& input) {
     if (!receiver_) {
         return fail(error);
     }
+    aggregator_ = std::make_unique<EvioAggregator>(aggregatorConfig_);
 
     published_ = 0;
     dropped_ = 0;
@@ -415,28 +454,33 @@ ersap::EngineData EjfatReceiverActor::configure(ersap::EngineData& input) {
         pumpThread_ = std::thread(&EjfatReceiverActor::pump, this);
     } catch (const std::exception& e) {
         running_ = false;
+        aggregator_.reset();
         receiver_.reset();
         return fail(std::string("cannot start the receive thread: ") + e.what());
     }
 
     if (!receiverConfig_.quiet) {
         std::cout << "EjfatReceiverActor configured:"
-                  << "\n  uri            = " << receiverConfig_.uri
-                  << "\n  recv-ip        = " << receiverConfig_.recvIp
-                  << "\n  recv-port      = " << receiverConfig_.recvPort
-                  << "\n  recv-threads   = " << receiverConfig_.recvThreads
-                  << "\n  event-timeout  = " << receiverConfig_.eventTimeoutMs << " ms"
-                  << "\n  poll-timeout   = " << receiverConfig_.pollTimeoutMs << " ms"
-                  << "\n  withcp         = " << (receiverConfig_.withCp ? "true" : "false")
-                  << "\n  novalidate     = " << (receiverConfig_.validateCert ? "false" : "true")
-                  << "\n  max-events     = " << receiverConfig_.maxEvents
-                  << "\n  stats-interval = " << receiverConfig_.statsIntervalSeconds << " s"
-                  << "\n  verbose        = " << (receiverConfig_.verbose ? "true" : "false")
-                  << "\n  quiet          = " << (receiverConfig_.quiet ? "true" : "false")
-                  << "\n  validation     = " << toString(validation_)
-                  << "\n  output-mime    = " << outputMime_
-                  << "\n  queue-size     = " << queueSize_
-                  << "\n  listening on   = " << receiver_->describeEndpoint() << std::endl;
+                  << "\n  uri             = " << receiverConfig_.uri
+                  << "\n  recv-ip         = " << receiverConfig_.recvIp
+                  << "\n  recv-port       = " << receiverConfig_.recvPort
+                  << "\n  recv-threads    = " << receiverConfig_.recvThreads
+                  << "\n  event-timeout   = " << receiverConfig_.eventTimeoutMs << " ms"
+                  << "\n  poll-timeout    = " << receiverConfig_.pollTimeoutMs << " ms"
+                  << "\n  withcp          = " << (receiverConfig_.withCp ? "true" : "false")
+                  << "\n  novalidate      = " << (receiverConfig_.validateCert ? "false" : "true")
+                  << "\n  max-events      = " << receiverConfig_.maxEvents
+                  << "\n  stats-interval  = " << receiverConfig_.statsIntervalSeconds << " s"
+                  << "\n  verbose         = " << (receiverConfig_.verbose ? "true" : "false")
+                  << "\n  quiet           = " << (receiverConfig_.quiet ? "true" : "false")
+                  << "\n  group-size      = " << aggregatorConfig_.groupSize
+                  << "\n  group-timeout   = " << aggregatorConfig_.groupTimeoutMs << " ms"
+                  << "\n  partial-groups  = " << toString(aggregatorConfig_.onPartial)
+                  << "\n  max-open-groups = " << aggregatorConfig_.maxOpenGroups
+                  << "\n  validation      = " << toString(validation_)
+                  << "\n  output-mime     = " << outputMime_
+                  << "\n  queue-size      = " << queueSize_
+                  << "\n  listening on    = " << receiver_->describeEndpoint() << std::endl;
     }
 
     return output;
@@ -455,14 +499,52 @@ void EjfatReceiverActor::shutdown() noexcept {
     }
     running_ = false;
 
+    // Flush any open groups per the configured partial-groups policy, so
+    // nothing sits in the aggregator across a reconfigure. The pump has
+    // already stopped, so this is single-threaded.
+    if (aggregator_) {
+        try {
+            std::vector<AggregatedEvent> flushed;
+            aggregator_->flush(flushed,
+                               aggregatorConfig_.onPartial == PartialGroupPolicy::EmitPartial);
+            for (AggregatedEvent& e : flushed) {
+                QueuedGroup g;
+                g.payload = std::move(e.payload);
+                g.tick = e.tick;
+                g.memberCount = e.memberCount;
+                g.complete = e.complete;
+                std::lock_guard<std::mutex> lock(queueMutex_);
+                if (queue_.size() >= queueSize_) {
+                    queue_.pop_front();
+                    dropped_++;
+                }
+                queue_.push_back(std::move(g));
+            }
+        } catch (...) {
+            // Shutdown must never take the process down.
+        }
+    }
+
     if (receiver_) {
         try {
             const double elapsed =
                 std::chrono::duration<double>(Clock::now() - startTime_).count();
             if (!receiverConfig_.quiet) {
                 receiver_->stats().printFinal(std::cout, elapsed);
-                std::cout << "  Events published          : " << published_.load() << '\n'
-                          << "  Events dropped (queue)    : " << dropped_.load() << '\n'
+                if (aggregator_) {
+                    const AggregatorStats& as = aggregator_->stats();
+                    std::cout << "  Group aggregation:\n"
+                              << "    Members received      : " << as.membersReceived << '\n'
+                              << "    Groups emitted        : " << as.groupsEmitted << '\n'
+                              << "    Groups complete       : " << as.groupsComplete << '\n'
+                              << "    Groups partial        : " << as.groupsPartial << '\n'
+                              << "    Groups dropped        : " << as.groupsDropped << '\n'
+                              << "    Duplicate members     : " << as.duplicates << '\n'
+                              << "    Malformed payloads    : " << as.malformed << '\n'
+                              << "    Open groups at exit   : " << as.openGroups << '\n';
+                }
+                std::cout << "  Events published (groups) : " << published_.load() << '\n'
+                          << "  Groups dropped (queue)    : " << dropped_.load() << '\n'
                           << "  execute() came up empty   : " << starved_.load() << '\n';
                 receiver_->reportTransport(std::cout);
             }
@@ -472,6 +554,7 @@ void EjfatReceiverActor::shutdown() noexcept {
         }
         receiver_.reset();
     }
+    aggregator_.reset();
 
     try {
         std::lock_guard<std::mutex> lock(queueMutex_);
@@ -489,25 +572,44 @@ void EjfatReceiverActor::reset() {
 }
 
 // ---------------------------------------------------------------------------
-// Receive thread
+// Receive / aggregate thread
 // ---------------------------------------------------------------------------
+
+void EjfatReceiverActor::enqueue(QueuedGroup&& group) {
+    std::lock_guard<std::mutex> lock(queueMutex_);
+    if (queue_.size() >= queueSize_) {
+        // Bound the memory and keep the freshest data: an unbounded queue in
+        // front of a stalled chain is how a receiver runs a node out of memory.
+        queue_.pop_front();
+        dropped_++;
+        logRateLimited(3, 5.0,
+                       "EjfatReceiverActor: output queue full, dropping the oldest "
+                       "aggregated group; downstream is slower than the stream");
+    }
+    queue_.push_back(std::move(group));
+    queueReady_.notify_one();
+}
 
 void EjfatReceiverActor::pump() {
     ReceiveStats& stats = receiver_->stats();
     auto lastProgress = Clock::now();
 
     // Never sit in recvEvent() longer than this, so a stop request is acted on
-    // promptly however large poll-timeout is.
+    // promptly and the aggregator's reap sweep runs often enough to catch
+    // stale groups even during a slow stream.
     const int pollStepMs = std::min(receiverConfig_.pollTimeoutMs, 200);
+
+    // A single scratch vector reused per iteration for aggregator output, so
+    // successful groups do not repeatedly allocate a fresh vector.
+    std::vector<AggregatedEvent> aggregated;
 
     while (!stopRequested_.load()) {
         ReassembledEvent event;
         std::string error;
         const ReceiveOutcome outcome = receiver_->receive(event, error, pollStepMs);
+        const auto now = Clock::now();
 
         if (outcome == ReceiveOutcome::Error) {
-            // A transport error is counted inside receive(). Log sparsely: a
-            // broken socket produces one of these per poll step.
             logRateLimited(0, 5.0, "EjfatReceiverActor: receive error: " + error);
         } else if (outcome == ReceiveOutcome::Event) {
             std::string problem;
@@ -518,38 +620,35 @@ void EjfatReceiverActor::pump() {
                 logRateLimited(1, 1.0,
                                "EjfatReceiverActor: malformed payload from dataId " +
                                    std::to_string(event.dataId()) + ": " + problem);
-                // Malformed events are dropped rather than published: a
-                // downstream EVIO decoder cannot do anything useful with them,
-                // and the counters above record that they arrived.
+                // Malformed events are not fed to the aggregator: a downstream
+                // decoder cannot do anything useful with them and their block
+                // header disagrees with the byte count, which the aggregator
+                // would reject anyway.
             } else {
                 if (!problem.empty()) {
                     logRateLimited(2, 1.0, "EjfatReceiverActor: dataId " +
                                                std::to_string(event.dataId()) + ": " + problem);
                 }
 
-                QueuedEvent queued;
-                // The Reassembler hands back memory it allocated with new[],
-                // which no standard container can adopt, so this is the one
-                // unavoidable copy on the path. Everything after it moves.
-                queued.payload.assign(event.data(), event.data() + event.size());
-                queued.eventNumber = event.eventNumber();
-                queued.dataId = event.dataId();
-
-                {
-                    std::lock_guard<std::mutex> lock(queueMutex_);
-                    if (queue_.size() >= queueSize_) {
-                        // Bound the memory and keep the freshest data: an
-                        // unbounded queue in front of a stalled chain is how a
-                        // receiver runs a node out of memory.
-                        queue_.pop_front();
-                        dropped_++;
-                        logRateLimited(3, 5.0,
-                                       "EjfatReceiverActor: output queue full, dropping the "
-                                       "oldest event; downstream is slower than the stream");
-                    }
-                    queue_.push_back(std::move(queued));
+                aggregated.clear();
+                std::string aggProblem;
+                if (!aggregator_->add(event.eventNumber(), event.dataId(), event.data(),
+                                      event.size(), now, aggregated, aggProblem)) {
+                    // Duplicate dataId within a group or an aggregator-side
+                    // rejection. Counted in the aggregator's stats already.
+                    logRateLimited(4, 1.0,
+                                   "EjfatReceiverActor: aggregation rejected event tick " +
+                                       std::to_string(event.eventNumber()) + " dataId " +
+                                       std::to_string(event.dataId()) + ": " + aggProblem);
                 }
-                queueReady_.notify_one();
+                for (AggregatedEvent& e : aggregated) {
+                    QueuedGroup q;
+                    q.payload = std::move(e.payload);
+                    q.tick = e.tick;
+                    q.memberCount = e.memberCount;
+                    q.complete = e.complete;
+                    enqueue(std::move(q));
+                }
 
                 if (receiverConfig_.verbose) {
                     std::cout << "EjfatReceiverActor: event " << event.eventNumber()
@@ -564,29 +663,56 @@ void EjfatReceiverActor::pump() {
                               << receiverConfig_.maxEvents << "; stopping the receive loop"
                               << std::endl;
                 }
-                // Stop receiving, but leave the actor alive so ERSAP can shut
-                // the pipeline down in its own time. execute() will drain what
-                // is still queued and then report starvation.
+                // Flush whatever the aggregator still holds before exiting the
+                // loop, so partial groups the user asked to keep make it out.
+                aggregated.clear();
+                aggregator_->flush(
+                    aggregated,
+                    aggregatorConfig_.onPartial == PartialGroupPolicy::EmitPartial);
+                for (AggregatedEvent& e : aggregated) {
+                    QueuedGroup q;
+                    q.payload = std::move(e.payload);
+                    q.tick = e.tick;
+                    q.memberCount = e.memberCount;
+                    q.complete = e.complete;
+                    enqueue(std::move(q));
+                }
                 break;
             }
         }
         // A Timeout is normal and is counted inside receive(); it must not log.
+
+        // Reap on every iteration so stale groups are found even when the
+        // stream stalls (timeout) or errors are occurring.
+        aggregated.clear();
+        aggregator_->reap(now, aggregated);
+        for (AggregatedEvent& e : aggregated) {
+            QueuedGroup q;
+            q.payload = std::move(e.payload);
+            q.tick = e.tick;
+            q.memberCount = e.memberCount;
+            q.complete = e.complete;
+            enqueue(std::move(q));
+        }
 
         if (receiverConfig_.statsIntervalSeconds > 0.0 && !receiverConfig_.quiet &&
             std::chrono::duration<double>(Clock::now() - lastProgress).count() >=
                 receiverConfig_.statsIntervalSeconds) {
             const double elapsed =
                 std::chrono::duration<double>(Clock::now() - startTime_).count();
+            const AggregatorStats& as = aggregator_->stats();
             std::cout << "EjfatReceiverActor: " << stats.progressLine(elapsed)
-                      << " | published " << published_.load() << " | dropped "
-                      << dropped_.load() << std::endl;
+                      << " | groups " << as.groupsEmitted << " (" << as.groupsComplete
+                      << " full, " << as.groupsPartial << " partial, " << as.groupsDropped
+                      << " dropped)"
+                      << " | open " << as.openGroups
+                      << " | published " << published_.load()
+                      << " | queue-dropped " << dropped_.load() << std::endl;
             lastProgress = Clock::now();
         }
     }
 
     running_ = false;
-    // Wake any execute() blocked on the queue so it does not wait out its full
-    // timeout after the pump has finished.
     queueReady_.notify_all();
 }
 
@@ -615,48 +741,39 @@ void EjfatReceiverActor::logRateLimited(std::size_t slot, double everySeconds,
 ersap::EngineData EjfatReceiverActor::execute(ersap::EngineData& /*input*/) {
     ersap::EngineData output;
 
-    if (!receiver_) {
+    if (!receiver_ || !aggregator_) {
         output.set_status(ersap::EngineStatus::ERROR);
         output.set_description("EjfatReceiverActor: not configured");
         return output;
     }
 
-    QueuedEvent event;
+    QueuedGroup group;
     {
         std::unique_lock<std::mutex> lock(queueMutex_);
-        // Wait at most poll-timeout, matching what the executable's recvEvent()
-        // call would have blocked for, then return empty-handed.
         const bool got = queueReady_.wait_for(
             lock, std::chrono::milliseconds(receiverConfig_.pollTimeoutMs),
             [this] { return !queue_.empty() || stopRequested_.load() || !running_.load(); });
 
         if (got && !queue_.empty()) {
-            event = std::move(queue_.front());
+            group = std::move(queue_.front());
             queue_.pop_front();
         } else {
             starved_++;
-            // Not an error: an idle stream, a poll-timeout expiry, or a
-            // receive loop that has reached max-events all land here. WARNING
-            // is what the reference EJFAT actor returns, and it does not stop
-            // the chain.
             output.set_status(ersap::EngineStatus::WARNING);
-            output.set_description("EjfatReceiverActor: no event within poll-timeout");
+            output.set_description("EjfatReceiverActor: no aggregated group within poll-timeout");
             return output;
         }
     }
 
     published_++;
-    output.set_communication_id(static_cast<long>(event.eventNumber));
+    output.set_communication_id(static_cast<long>(group.tick));
 
-    // The payload is moved into the EngineData, and the serializer's rvalue
-    // overload moves it again into the outgoing message, so the copy made on
-    // the receive thread is the only one.
     if (outputMime_ == MIME_BYTES) {
-        output.set_data(bytesType(), std::move(event.payload));
+        output.set_data(bytesType(), std::move(group.payload));
     } else if (outputMime_ == MIME_JOBJ) {
-        output.set_data(jobjType(), std::move(event.payload));
+        output.set_data(jobjType(), std::move(group.payload));
     } else {
-        output.set_data(evioBlockType(), std::move(event.payload));
+        output.set_data(evioBlockType(), std::move(group.payload));
     }
 
     return output;
@@ -675,9 +792,6 @@ ersap::EngineData EjfatReceiverActor::execute_group(
 // ---------------------------------------------------------------------------
 
 std::vector<ersap::EngineDataType> EjfatReceiverActor::input_data_types() const {
-    // Any input acts as a trigger. SINT32 mirrors the Java trigger-source
-    // pattern, JSON carries the configuration, and the two byte types allow
-    // chaining behind another native actor.
     return {ersap::type::SINT32, ersap::type::JSON, evioBlockType(), bytesType(), jobjType()};
 }
 
@@ -692,12 +806,12 @@ std::string EjfatReceiverActor::name() const { return "EjfatReceiverActor"; }
 std::string EjfatReceiverActor::author() const { return "gurjyan"; }
 
 std::string EjfatReceiverActor::description() const {
-    return "Receives EJFAT packets, reassembles them with the E2SAR Reassembler, and "
-           "publishes each complete EVIO block as a raw byte payload for a downstream "
-           "ERSAP actor.";
+    return "Receives EJFAT packets, reassembles them with the E2SAR Reassembler, aggregates "
+           "the per-stream events of one synchronized group by their common LB tick, and "
+           "publishes one combined EVIO v6 record per group to the ERSAP pipeline.";
 }
 
-std::string EjfatReceiverActor::version() const { return "1.0.0"; }
+std::string EjfatReceiverActor::version() const { return "2.0.0"; }
 
 }  // namespace actor
 }  // namespace petsro

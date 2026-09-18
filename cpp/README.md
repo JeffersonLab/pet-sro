@@ -138,6 +138,7 @@ cpp/
 │   ├── PacketSink.hpp         transport interface + NullPacketSink
 │   ├── EjfatSender.hpp        PacketSink backed by E2SAR (pimpl)
 │   ├── EjfatReceiver.hpp      reception + reassembly via E2SAR (pimpl)
+│   ├── EvioAggregator.hpp     per-tick group table + EVIO v6 record builder
 │   ├── ReceiveStats.hpp       receiver counters, reports, validation levels
 │   ├── TimestampRebaser.hpp   loop-seam timestamp/frame-counter rebasing
 │   ├── ReplayLoop.hpp         application control logic
@@ -405,12 +406,15 @@ loop 3 begins ts = 242794000000
 
 ### Event numbering
 
-One monotonically increasing EJFAT event number per **EVIO event sent**, so the
-N events of a synchronized group get N consecutive numbers. Numbering **starts
-at 1**, because E2SAR treats a passed event number of 0 as "do not override the
-internal counter".
+One monotonically increasing EJFAT event number per **synchronized group**, not
+per event: the N events of a group all carry the **same** event number and
+therefore the same tick in the LB header. That is what guarantees the LB
+routes every member of a group to the same receiver host — receivers tell
+members apart by the RE-header `dataId`, which stays unique per stream.
+Numbering **starts at 1**, because E2SAR treats a passed event number of 0 as
+"do not override the internal counter".
 
-By default numbering **keeps increasing across replay loops**, so no two events
+By default numbering **keeps increasing across replay loops**, so no two groups
 in a run share a number. `--reset-event-numbers` restarts at 1 on each loop
 instead.
 

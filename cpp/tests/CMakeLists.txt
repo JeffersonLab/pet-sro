@@ -9,7 +9,8 @@ set(PETSRO_TEST_TARGETS
     test_synchronizer
     test_packetization
     test_rebaser
-    test_event_view)
+    test_event_view
+    test_aggregator)
 
 foreach(target IN LISTS PETSRO_TEST_TARGETS)
   add_executable(${target} ${target}.cpp)

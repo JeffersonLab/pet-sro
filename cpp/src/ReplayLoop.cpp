@@ -43,13 +43,19 @@ bool ReplayLoop::sendGroup(std::vector<EvioEvent>& group) {
         return false;
     }
 
+    // Every event in a synchronized group shares one EJFAT event number, so
+    // the LB's calendar routes all N events of a group to the same receiver
+    // host. Members are told apart on the receiver by the RE-header dataId.
+    // See the "Event numbering" section of cpp/README.md.
+    const std::uint64_t groupEventNumber = nextEventNumber_;
+
     for (std::size_t i = 0; i < group.size(); ++i) {
         const EvioEvent& event = group[i];
 
         OutgoingEvent out;
         out.data = event.data.data();
         out.length = event.data.size();
-        out.eventNumber = nextEventNumber_;
+        out.eventNumber = groupEventNumber;
         out.dataId = stats_.streams[i].dataId;
         out.entropy = config_.entropyPerSource
                           ? static_cast<std::uint16_t>(1U + static_cast<std::uint16_t>(i))
@@ -67,7 +73,6 @@ bool ReplayLoop::sendGroup(std::vector<EvioEvent>& group) {
             return false;
         }
 
-        ++nextEventNumber_;
         stats_.eventsSent++;
         stats_.packetsSent += outcome.packets;
         stats_.payloadBytesSent += out.length;
@@ -79,6 +84,7 @@ bool ReplayLoop::sendGroup(std::vector<EvioEvent>& group) {
                   << " packets=" << outcome.packets;
     }
 
+    ++nextEventNumber_;
     stats_.groupsSent++;
     return true;
 }
